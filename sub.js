@@ -3,7 +3,7 @@ const videoB = document.querySelector('.video-b');
 let videoSettled = false;
 
 async function main() {
-  const pc2 = new RTCPeerConnection();
+  const pc2 = new RTCPeerConnection({ sdpSemantics: "unified-plan" });
 
   const socket = new WebSocket('ws://localhost:3000/sub');
 
@@ -34,31 +34,24 @@ async function main() {
       socket.send(JSON.stringify({ type: 'sub_candidate', value: e.candidate }));
     }
   });
-  pc2.addEventListener('track', (e) => {
+  pc2.addEventListener('track', ({ track }) => {
+    console.log('onTrack');
+
     if (!videoA.srcObject) {
       const stream1 = new MediaStream();
-      stream1.addTrack(e.streams[0].getVideoTracks()[0]);
+      stream1.addTrack(track);
       videoA.srcObject = stream1;
       videoA.play();
       return;
     }
 
-    if(!videoB.srcObject){
-      const stream1 = new MediaStream();
-      stream1.addTrack(e.streams[0].getVideoTracks()[0]);
-      videoB.srcObject = stream1;
+    if (!videoB.srcObject) {
+      const stream2 = new MediaStream();
+      stream2.addTrack(track);
+      videoB.srcObject = stream2;
       videoB.play();
       return;
     }
-
-    // const stream2 = new MediaStream();
-    // stream2.addTrack(e.streams[0].getVideoTracks()[1]);
-    // videoB.srcObject = stream2;
-    // videoB.play();
-
   })
-
-  //where's the offer?
-
 }
 main();

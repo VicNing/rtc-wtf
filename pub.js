@@ -1,7 +1,9 @@
-async function main() {
-  const pc1 = new RTCPeerConnection();
+let globalTransceiver;
 
-  const socket = new WebSocket('ws://localhost:3000');
+async function main() {
+  const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' });
+
+  const socket = new WebSocket('ws://10.83.1.140:3000');
 
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'join', value: 'pub' }));
@@ -9,11 +11,10 @@ async function main() {
 
   // Listen for messages
   socket.addEventListener('message', async function (event) {
-    // console.log('Message from server ', event.data);
     const data = JSON.parse(event.data);
     if (data.type === 'sub_answer') {
-      pc1.setRemoteDescription(data.value);
-      await setLowEncoding(pc1);
+      await pc1.setRemoteDescription(data.value);
+      // await setLowEncoding(pc1);
       return;
     }
 
@@ -22,56 +23,76 @@ async function main() {
     }
   });
 
-  const highStream = new MediaStream();
-  const lowStream = new MediaStream();
-  const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+  const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
   const highVideoTrack = videoStream.getVideoTracks()[0];
   const lowVideoTrack = await highVideoTrack.clone();
-  // lowVideoTrack.applyConstraints({ width: 160, height: 120, frameRate: 15 });
-
-  highStream.addTrack(highVideoTrack);
-  lowStream.addTrack(lowVideoTrack);
+  const audioTrack = videoStream.getAudioTracks()[0];
 
   pc1.addEventListener('icecandidate', async e => {
     if (e.candidate) {
       socket.send(JSON.stringify({ type: 'pub_candidate', value: e.candidate }));
-      // await pc2.addIceCandidate(e.candidate);
     }
   });
 
-  pc1.addTrack(highVideoTrack, highStream);
-  pc1.addTrack(lowVideoTrack, lowStream);
+  const highTransceiver = pc1.addTransceiver(highVideoTrack);
 
+  globalTransceiver = highTransceiver;
+  // const lowTransceiver = pc1.addTransceiver(lowVideoTrack, { sendEncodings: [{ scaleResolutionDownBy: 4, maxFramerate: 15, maxBitrate: 10000 }] });
+  // const audioTransceiver = pc1.addTransceiver(audioTrack);
 
   const offer = await pc1.createOffer({ offerToReceiveVideo: 1 });
-  pc1.setLocalDescription(offer);
+  console.log(offer.sdp);
+  await pc1.setLocalDescription(offer);
+  const ssrc = await getSSRC(highTransceiver.sender);
+  console.log('ssrc-------',ssrc);
   socket.send(JSON.stringify({ type: 'pub_offer', value: offer }));
 
-  window.foo = function () {
-    const senders = pc1.getSenders();
-    const lowParams = senders[0].getParameters();
-    console.log(lowParams);
-  }
+  // setTimeout(async () => {
+  // }, 5000);
+
 }
 main();
 
 
 async function setLowEncoding(pc) {
   const senders = pc.getSenders();
-  const lowParams = senders[0].getParameters();
+  const lowSender = senders[0];
+  const lowParams = lowSender.getParameters();
 
   if (!lowParams.encodings) {
     lowParams.encodings = [{}];
   }
 
-  lowParams.encodings[0].scaleResolutionDownBy = 4.0;
-  lowParams.encodings[0].maxBitrate = 15000;
-  await senders[0].setParameters(lowParams);
+  // lowParams.encodings[0].scaleResolutionDownBy = 4.0;
+  lowParams.encodings[0].maxBitrate = 10000;
+  // lowParams.encodings[0].maxFramerate = 15;
 
-  //not change by safari
-  if (senders[0].getParameters().encodings[0].scaleResolutionDownBy == 1) {
-    await senders[0].track.applyConstraints({ height: 120, width: 160 });
+  await lowSender.setParameters(lowParams);
+
+  // not change by safari
+  if (lowSender.getParameters().encodings[0].scaleResolutionDownBy == 1) {
+    await lowSender.track.applyConstraints({ height: 120, width: 160, frameRate: 15 });
+  }
+}
+
+async function getSSRC(sender) {
+  const reports = Array.from(await sender.getStats());
+  console.log(reports);
+  const report = reports.find(report => {
+    return report[1] && report[1].type === 'outbound-rtp' && (report[1].kind === 'video' || report[1].mediaType === 'video') && report[1].ssrc;
+  });
+
+  if (report) {
+    return report[1].ssrc;
   }
 
-  console.log(senders[0].getParameters().encodings[0].maxBitrate);
 }
+
+document.querySelector('.button').onclick = async () => {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  const screenTrack = stream.getVideoTracks()[0];
+  globalTransceiver.sender.replaceTrack(screenTrack);
+  const ssrc = await getSSRC(globalTransceiver.sender);
+  console.log(ssrc);
+};
