@@ -3,7 +3,7 @@ let globalTransceiver;
 async function main() {
   const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' });
 
-  const socket = new WebSocket('ws://10.83.1.140:3000');
+  const socket = new WebSocket('ws://10.83.0.191:3000');
 
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'join', value: 'pub' }));
@@ -38,14 +38,16 @@ async function main() {
   const highTransceiver = pc1.addTransceiver(highVideoTrack);
 
   globalTransceiver = highTransceiver;
-  // const lowTransceiver = pc1.addTransceiver(lowVideoTrack, { sendEncodings: [{ scaleResolutionDownBy: 4, maxFramerate: 15, maxBitrate: 10000 }] });
+  const lowTransceiver = pc1.addTransceiver(lowVideoTrack);
   // const audioTransceiver = pc1.addTransceiver(audioTrack);
 
   const offer = await pc1.createOffer({ offerToReceiveVideo: 1 });
   console.log(offer.sdp);
   await pc1.setLocalDescription(offer);
-  const ssrc = await getSSRC(highTransceiver.sender);
-  console.log('ssrc-------',ssrc);
+  setLowEncoding(pc1);
+
+  // const ssrc = await getSSRC(highTransceiver.sender);
+  // console.log('ssrc-------', ssrc);
   socket.send(JSON.stringify({ type: 'pub_offer', value: offer }));
 
   // setTimeout(async () => {
@@ -64,16 +66,16 @@ async function setLowEncoding(pc) {
     lowParams.encodings = [{}];
   }
 
-  // lowParams.encodings[0].scaleResolutionDownBy = 4.0;
-  lowParams.encodings[0].maxBitrate = 10000;
-  // lowParams.encodings[0].maxFramerate = 15;
+  lowParams.encodings[0].scaleResolutionDownBy = 8;
+  // lowParams.encodings[0].maxBitrate = 10000;
+  lowParams.encodings[0].maxFramerate = 15;
 
   await lowSender.setParameters(lowParams);
 
   // not change by safari
-  if (lowSender.getParameters().encodings[0].scaleResolutionDownBy == 1) {
-    await lowSender.track.applyConstraints({ height: 120, width: 160, frameRate: 15 });
-  }
+  // if (lowSender.getParameters().encodings[0].scaleResolutionDownBy == 1) {
+  //   await lowSender.track.applyConstraints({ height: 120, width: 160, frameRate: 15 });
+  // }
 }
 
 async function getSSRC(sender) {

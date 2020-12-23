@@ -5,7 +5,7 @@ let videoSettled = false;
 async function main() {
   const pc2 = new RTCPeerConnection({ sdpSemantics: "unified-plan" });
 
-  const socket = new WebSocket('ws://localhost:3000/sub');
+  const socket = new WebSocket('ws://10.83.0.191:3000');
 
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'join', value: 'sub' }));
